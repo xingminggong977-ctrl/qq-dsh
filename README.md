@@ -1,52 +1,106 @@
 # qq-dsh
 
-把一个 QQ 号接成 DSH 的常驻会话界面：NapCat 收消息 → 桥接排队 → DSH 跑回合 → 桥接回话。
-它自己带记忆、日记、夜班和主动开口，不依赖任何云端人格服务。
+**Turn a QQ account into a long-running personal agent.**
 
-这个仓库只放**文档、协议、部署脚本和决策记录**。代码在旁边的几个仓库里：
+Messages arrive through NapCat, a small bridge queues them, an agent runs a turn, and the
+bridge sends the reply back. On top of that plain loop it grows the things that make a
+chatbot feel like a resident: long-term memory with decay, a diary, a nightly review,
+occasional proactive pings, and a set of narrow tools (reminders, files, a desktop bridge,
+Bilibili).
 
-| 仓库 | 是什么 |
-| --- | --- |
-| `qq-dsh-bridge` | 桥接进程：NapCat WebSocket、任务队列（SQLite）、分发、语音/图片/文件、提醒、主动开口、静默看门狗 |
-| `qq-dsh-node-plugin` | `qq-node` 插件：轮询桥接、跑回合、装配 persona 与记忆预算、工具（remember / recall / remind / qq_send_file / qzone_send / pc_*）、夜班 |
-| `qq-dsh-pc-agent` | 主人电脑上的小服务：`pc_exec` / `pc_read` / `pc_write` 的另一头 |
-| `qq-dsh-bili-plugin` | `bili_search` 与 `bili_extract` |
-| `qq-dsh-nightly` | 夜班：把一天的会话压成 digest，再从 digest 里提提案 |
-
-## 一条消息怎么走
+It is built to be picked up by someone who has never deployed a bot before: every step has
+a script, every failure mode I hit has a paragraph in [`RUNBOOK.md`](RUNBOOK.md), and every
+seam has a test you can run before you trust it.
 
 ```
-QQ ──> NapCat ──ws──> bridge ──queue(SQLite)──> node-plugin ──回合──> DSH agent
-                                     │                                  │
-                                     └──── /node/result <───────────────┘
+QQ ──> NapCat ──ws──> bridge ──queue(SQLite)──> node-plugin ──turn──> DSH agent
+                            │                                          │
+                            └──────── /node/result <───────────────────┘
 ```
 
-桥接不直接调模型：它只管排队、限流、超时、垫话和发送。插件不管网络：它只轮询任务、
-跑回合、把结果 POST 回去。两边靠 `PROTOCOL.md` 里的 HTTP 契约说话。
+The bridge owns the network, the queue, the rate limits, the timeouts and the sending.
+The plugin owns the model turns, the prompt assembly and the memory. They talk over HTTP
+described in [`PROTOCOL.md`](PROTOCOL.md) — so you can replace either half.
 
-慢回合在这条链上有三层兜底，全都在有真实证据之后才加：
+## Which repository do I need?
 
-1. **22 / 90 / 180 秒垫话**——但排队时说「前面那条我还在弄」，只有真在跑才说「在呢，我想一下」。
-2. **她自己开口就先安静**——插件把说到一半的那句完整话通过 `/node/send` 先发出去，
-   桥接收到带 `taskId` 的早发就撤掉罐头垫话（`markSpoke`）。
-3. **撞墙不等于没说话**——超时或工具预算用尽时，先追一句「现在做到哪一步」，
-   拿不到就把已经说出口的话留下，并回一句「回一句继续」。
+| Repository | What it is | Do you need it? |
+| --- | --- | --- |
+| [`qq-dsh-bridge`](https://github.com/xingminggong977-ctrl/qq-dsh-bridge) | NapCat WebSocket, SQLite task queue, dispatch, voice / image / file replies, reminders, proactive pings, silence watchdog | yes |
+| [`qq-dsh-node-plugin`](https://github.com/xingminggong977-ctrl/qq-dsh-node-plugin) | The `qq-node` plugin: polling, turns, persona + memory budgets, tools, nightly review | yes |
+| [`qq-dsh-pc-agent`](https://github.com/xingminggong977-ctrl/qq-dsh-pc-agent) | Small service on your desktop, the other end of `pc_exec` / `pc_read` / `pc_write` | only if you want it to reach your computer |
+| [`qq-dsh-bili-plugin`](https://github.com/xingminggong977-ctrl/qq-dsh-bili-plugin) | `bili_search` and `bili_extract` — search videos, read transcripts, look at keyframes | optional |
+| [`qq-dsh-nightly`](https://github.com/xingminggong977-ctrl/qq-dsh-nightly) | Nightly pass: a day of chat becomes a digest, the digest becomes small proposals | optional |
+| this repo | Docs, protocol, decision log, deploy scripts | yes, for reference |
 
-## 文档
+## Quick start
 
-- [`PROTOCOL.md`](PROTOCOL.md) —— 插件 ↔ 桥接的 HTTP 契约（字段、错误码、幂等）。
-- [`DECISIONS.md`](DECISIONS.md) —— 从第一天到现在的取舍记录，含每次踩坑的真实日志。
-- [`PLAN.md`](PLAN.md) —— 当前进度与下一步。
-- [`docs/`](docs/) —— 部署 runbook、迁移手册、协议细化、延迟画像、语音登记簿。
+You need: a Linux box (Ubuntu 22.04+, 2 GB RAM is enough), Node 22+, one QQ account you can
+log into with NapCat, and a DSH install. Roughly 20 minutes, most of it waiting on downloads.
 
-## 部署
+```bash
+# 1. NapCat (logs the QQ account in and exposes a WebSocket)
+#    follow https://napcat.napneko.icu/ and set network.websocketServers[0].port = 3001
 
-`deploy/` 里是真正在跑的东西：`deploy-bridge.sh` / `deploy-node-plugin.sh`（先跑测试再重启、
-重启前检查有没有未结算的回合）、systemd 单元、定时器、cron 文件、健康检查与备份脚本。
+# 2. the bridge
+git clone https://github.com/xingminggong977-ctrl/qq-dsh-bridge /opt/qq-dsh-bridge
+cd /opt/qq-dsh-bridge && npm ci && npm test          # 251 tests, no network needed
 
-`RUNBOOK.md` 是照着做就能从零装起来的那一份。所有密钥都从 `/etc/dsh-qq-bridge/env` 和
-`/etc/dsh-qq-agent/env` 读，仓库里没有任何凭据。
+# 3. the plugin, next to its persona directory
+git clone https://github.com/xingminggong977-ctrl/qq-dsh-node-plugin /opt/qq-dsh
+ln -s /opt/qq-dsh/node-plugin /opt/dsh-qq-agent/node-plugin   # or: "qq-node": "link:..."
 
-## 许可
+# 4. secrets live outside the repo
+install -d /etc/dsh-qq-bridge
+#   NAPCAT_WS_URL, NAPCAT_ACCESS_TOKEN, BRIDGE_PORT, NODE_TOKEN, OWNER_QQ, DB_PATH …
+#   full list and every optional knob: deploy/README.md
 
-MIT。
+# 5. run it
+node bin/bridge.js                                   # or: systemctl start dsh-qq-bridge
+```
+
+Then write your own `persona/PERSONA.md` (there is a template in the plugin repository) and
+say hello. `MEMORY.md`, `CORRECTIONS.md` and `diary/` create themselves on first write.
+
+Nothing in the repositories is a credential: every secret is read from
+`/etc/dsh-qq-bridge/env` and `/etc/dsh-qq-agent/env`.
+
+## If it feels slow
+
+Chat turns took 3.6 s at the median and 180 s at the tail. Three mechanisms fixed most of the
+bad feeling, and each one was added only after the logs proved the problem:
+
+1. **The queue is not the model.** A task that is still waiting for a slot says "still on the
+   previous one" instead of "thinking" — 187 s of queueing used to be disguised as thinking.
+2. **Speak as soon as you have a whole sentence.** At 25 s, if the turn has already produced a
+   complete sentence, it is sent immediately; the canned "still working" ladder then shuts up
+   for that task.
+3. **A timeout is not silence.** Hitting the wall triggers a one-line wrap-up ("where are you,
+   where is the file, what is left"). If even that fails, whatever was already said is kept.
+
+The measurements behind these are in [`docs/latency-profile-2026-11-01.md`](docs/latency-profile-2026-11-01.md).
+
+## Memory, briefly
+
+Facts carry a tier (`identity` / `rule` / `event` / `note` / `ops`). Identity and rules never
+decay; everything else fades on `exp(-days / stability)` and is archived rather than deleted —
+`recall` can still fetch it. The important correction: **being injected into the prompt is not
+a rehearsal.** Early versions counted every prompt assembly as a review, which inflated the
+stability of every item 32× and made forgetting impossible.
+
+## Docs
+
+- [`PROTOCOL.md`](PROTOCOL.md) — the HTTP contract between plugin and bridge.
+- [`RUNBOOK.md`](RUNBOOK.md) — installation, migration, and one section per failure I have met.
+- [`DECISIONS.md`](DECISIONS.md) — a month of trade-offs, with the logs that forced them.
+- [`docs/`](docs/) — latency profile, voice registry, pc bridge protocol, nightly contract.
+
+## 中文
+
+这个仓库只放文档、协议、决策记录和部署脚本，代码在五个子仓库里（见上表）。
+照着 `RUNBOOK.md` 从上往下做就能装起来；`DECISIONS.md` 记的是这一个月每个取舍的理由。
+记忆、日记、人格这些运行时数据不在仓库里——它们活在部署机上的 `persona/` 目录。
+
+## License
+
+MIT.
