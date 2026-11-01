@@ -1,0 +1,50 @@
+[Unit]
+Description=DSH QQ bridge (OneBot 11 WS client + HTTP long-poll node API)
+Documentation=file:///opt/dsh-qq-bridge/README.md
+After=network-online.target
+Wants=network-online.target
+# 故意不写 After=napcat*.service / Requires=：NapCat 用官方裸机安装器装（RUNBOOK S7），
+# unit 名由安装器决定、不固定。bridge 自带 WS 重连，NapCat 后起也能自己连上，因此不做启动顺序硬依赖。
+# 若你想显式排序，再自行追加 After=your-napcat.service。
+
+[Service]
+Type=simple
+User=dshqq
+Group=dshqq
+WorkingDirectory=/opt/dsh-qq-bridge
+EnvironmentFile=/etc/dsh-qq-bridge/env
+
+# 入口与契约一致：bin/bridge.js（ESM）。第一段 node 路径要在部署时按
+# `command -v node` 的实际输出改（RUNBOOK S3 的 npmmirror 装法把 bin/* 软链到
+# /usr/local/bin，所以是 /usr/local/bin/node；若你改用发行版包则是 /usr/bin/node）。
+# RUNBOOK S6 给了 sed 一键改写。
+ExecStart=/usr/bin/node /opt/dsh-qq-bridge/bin/bridge.js
+
+Restart=always
+RestartSec=5
+# 不要给 StartLimitIntervalSec 收紧上限：NapCat 未就绪时 bridge 会快速失败重试，
+# 但正常实现是「连不上就退避重连、进程不退出」，因此不会打满 restart 限制。
+
+# 数据目录：systemd 会在 ProtectSystem=strict 下额外放行 /var/lib/dsh-qq-bridge。
+# 若目录已存在且属主错了，systemd 不会自动纠正 —— RUNBOOK S2 负责 chown。
+StateDirectory=dsh-qq-bridge
+StateDirectoryMode=0700
+
+# --- 加固（保守档；发行版已确认为 Ubuntu 22.04.5，仍保留最小集以免日升级后起不来） ---
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# 刻意没有使用 MemoryDenyWriteExecute=yes —— V8 需要可写可执行的 JIT 页，
+# 开了这个 Node 会直接起不来。也没有使用 SystemCallFilter=@system-service，
+# 它在老内核/容器内偶有误杀；需要更强隔离时由你自己加，并先在
+# /opt/dsh-qq-bridge 里用 systemd-run 试跑。
+
+[Install]
+WantedBy=multi-user.target

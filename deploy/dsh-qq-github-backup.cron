@@ -1,0 +1,2 @@
+# 每天 08:05 把身家推到私有 GitHub 仓库做异地备份（本地备份之后跑，05 分钟错开）
+5 8 * * * root /usr/local/bin/backup-to-github.sh >> /var/log/dsh-qq-github.log 2>&1

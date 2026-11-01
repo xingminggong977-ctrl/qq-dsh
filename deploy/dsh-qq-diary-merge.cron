@@ -1,0 +1,4 @@
+# 每 15 分钟把她写在 workspace 里的日记并进正式日记目录。
+# 沙箱不让她写 persona/，所以这一步必须由外面的人（这个 cron）来做。
+SHELL=/bin/bash
+*/15 * * * * root /usr/local/bin/diary-automerge.sh >/dev/null 2>&1

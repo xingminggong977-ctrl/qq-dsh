@@ -1,0 +1,11 @@
+[Unit]
+Description=dsh-qq NapCat kernel-wedge watchdog
+# 只在 napcat 存在时才有意义
+After=napcat.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/dsh-qq-napcat-watch.sh
+# 单次运行上限 60 秒：脚本设计成每次只做一件事（检测 或 复核），
+# 60 秒足够 send_probe 的 20 秒超时；超时被 kill 也不会留下半截状态。
+TimeoutStartSec=60

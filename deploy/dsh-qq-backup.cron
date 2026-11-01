@@ -1,0 +1,2 @@
+# 每天 08:00（服务器本地时区 CST / UTC+8）备份她的身家，脚本自带轮转只留最近 7 份
+0 8 * * * root /usr/local/bin/dsh-qq-backup.sh >> /var/log/dsh-qq-backup.log 2>&1

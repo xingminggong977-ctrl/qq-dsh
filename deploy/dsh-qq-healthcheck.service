@@ -1,0 +1,6 @@
+[Unit]
+Description=dsh-qq health check
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/dsh-qq-healthcheck.sh
