@@ -279,7 +279,7 @@ systemctl daemon-reload
 ### 云端待办
 
 - [x] pc-agent + `pc_exec`/`pc_read`/`pc_write`（D17）——已上线：`pc-agent` 在他电脑上登录自启（166 用例），云端插件只在主人私聊里按轮注册这三个工具
-- [x] `node-plugin/test/dsh-resolve.js` 不再写死 Windows：按平台给候选路径，`DSH_INSTALL` 可覆盖，云端 300 个用例跑得动
+- [x] `node-plugin/test/dsh-resolve.js` 不再写死 Windows：按平台给候选路径，`DSH_INSTALL` 可覆盖，云端 303 个用例跑得动
 - [x] `MEMORY.md` 里「本机 node 插件」一句已过时（已改为三段全在云端）
 - [x] 语音转写两条路都在：云端 ASR（`ASR_URL` + `ASR_API_KEY` + `ASR_MODEL`）优先，本地 faster-whisper venv（`ASR_PYTHON` + `ASR_SCRIPT`）兜底，见 `bridge/src/asr.js`
 - [ ] 本机 `persona/` 那份降级为冷备份，避免与云端真身漂移——**已漂移**：本机 `persona/MEMORY.md` 还是 2026-10 的老样式（2.1 KB、14 条），云端真身 35 条 / 7.5 KB；`deploy/pull-persona.ps1` 拉到的是另一个目录，别把本机这份当真身改

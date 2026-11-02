@@ -62,6 +62,10 @@ body:
 
 - `text` 为回给 QQ 的正文（node 已负责截断到 ≤ 8000 字）。
 - **`text` 为空串 = 已读不回**：bridge 不发送任何 QQ 消息，任务直接置 `done`，
+  例外：**主人私聊 + `needs_reply: true`** 时，空正文（含只有空白字符）会被替换成一句兜底
+  `emptyReplyText`（默认「我在，你说。」），日志 `empty reply replaced with a fallback line`。
+  2026-11-01 16:08 那次就是这样：空白正文被 NapCat 以 `retcode=1200` 拒发，对面十几秒什么都没看到。
+  群里、`ask` 任务、`needs_reply:false` 的消息不受影响，仍然不发。
   且不计入频率限制。用于群聊上下文中「不需要她回话」的消息，以及她主动选择沉默。
 - bridge 负责按 1800 字分段发回 `replyTarget`，每段之间 300ms。
 - 发送失败重试 3 次（指数退避 1s/2s/4s），仍失败则记 `failed` 并写日志。
@@ -72,6 +76,33 @@ body:
 ### `GET /blob/<blobId>`
 返回图片二进制，`Content-Type` 取入库时记录的 `mime`。鉴权同上。
 不存在 → `404`。
+
+### 小结：node → QQ 的四条出站口
+
+poll / status / result 是「她得到了一个任务」的路；下面四条是反过来——**她主动往 QQ 发东西**。
+四条都只认主人（`OWNER_QQ` 的第一个），因为 bridge 上跑着 cron 和别的脚本，谁都能调就等于谁都能
+以她的名义发消息。全部 `POST`，全部 `Authorization: Bearer <NODE_TOKEN>`。
+
+| 路由 | body | 说明 |
+|---|---|---|
+| `/node/send` | `{ to, text, taskId? }` | 纯文本，`text` 先 `trim()`、1–2000 字（`TEXT_MAX_CHARS`）。带上 `taskId` 表示「这一轮她已经自己开口了」，bridge 会撤掉该任务还没发出的垫话（22/90/180 秒那三句） |
+| `/node/send_image` | `{ to, file, kind? }` | 服务器上的图片路径，按扩展名白名单 + 10 MB 上限；`kind` 可 `private`/`group` |
+| `/node/send_file` | `{ path, name? }` | 任意文件（PPT/PDF/表格），只发给主人；路径必须落在 `QQ_FILE_ROOTS` 里（软链接按 `realpath` 判），20 MB 上限，文件名里的路径分隔符会被抹掉 |
+| `/node/remind` | `{ at, text, to? }` | `at` 是毫秒时间戳；落库后由 bridge 自己的 ticker 到点推 QQ，**不依赖 node 那一轮还活着**。同一目标 + 同一句话 + 5 分钟内 → 不重复存，返回 `{ ok: true, duplicate: true, reminderId }` |
+
+三个发文件的共同点：NapCat 与 bridge 常常不在同一台机器上，所以一律把内容读成 `base64://` 再交给
+OneBot，而不是给它一个本地路径。
+
+### `POST /node/ask`
+别人（微信桥、定时脚本、命令行）借她一张嘴问一句话，等一次完整回合。
+body `{ text, from, images?, audios?, channel?, timeoutMs? }`，`from` 必填（要落进她的记忆里作身份），
+`channel` ∈ `api` / `wechat`（`ASK_CHANNELS`），图片与语音走 base64，body 上限单给到 `ASK_MAX_BODY_BYTES`。
+正文上限 `ASK_TEXT_MAX_CHARS` = 4000 字；超时被夹在 `DEFAULT_ASK_TIMEOUT_MS`（60 s）..`MAX_ASK_TIMEOUT_MS`（120 s）；调用方断开即作废等待项。
+
+### `/node/pc/*`（主人电脑那一侧）
+`POST /node/pc/heartbeat`、`POST /node/pc/poll`、`POST /node/pc/result` 由他电脑上的 `pc-agent`
+长轮询驱动；`POST /node/pc/enqueue` 与 `GET /node/pc/status` 给插件用（`pc_exec` / `pc_read` / `pc_write`
+和「他电脑在不在」）。协议细节见 `docs/pc-bridge-protocol.md`。
 
 ## Task 结构
 
@@ -141,6 +172,10 @@ node 读到缺省必须按 `true` 处理——**缺字段等于要回复**，否
   - `all`：群消息全部入队；没 @ 的带 `needsReply:false`、`mentioned:false`，
     只作为群聊上下文，不触发回复。
 - 私聊消息一律入队，`mentioned:true`、`needsReply:true`。
+- **段类型不许把消息吃成空串**：`text` / `at` / `reply` 之外，卡片与文件类段落转成可见占位——
+  `json` `xml` → `[卡片消息]`、`forward` → `[合并转发]`、`share` → `[链接分享]`、`music` → `[音乐分享]`、
+  `file` → `[文件]`、`poke` → `[戳一戳]`、`dice` → `[骰子]`、`rps` → `[猜拳]`；没见过的类型变成 `[类型名]`。
+  以前这些段被直接丢掉，他发一张卡片过来，她看到的是「消息是空的」，还会以为自己收了个空包。
 - 频率限制：同一 `userId` 每分钟最多 6 次入队，超出则丢弃并回一句限流提示（每 5 分钟最多提示一次）。
   已读不回（空 `text`）不占用这个额度。
 - `GROUP_MODE` 取值非法时，bridge 必须**启动即报错退出**，与 `BRIDGE_HOST` 同等级处理。
