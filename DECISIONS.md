@@ -1,4 +1,4 @@
-﻿# 决策记录 — 把 DSH 接入 QQ
+# 决策记录 — 把 DSH 接入 QQ
 
 生成于 2026-10-19。记录已敲定的决策与理由，供后续返工时判断"这条能不能改"。
 
@@ -150,7 +150,7 @@ S1 体检 ✅ · S1.5 网络探测 ✅ · S3 Node 24(v24.22.1) ✅ · S2 用户�
 - [x] NapCat 与 node 的开机自启 → 已转 systemd，见「云端常驻」
 - [ ] root 密码轮换（曾以明文出现在 PowerShell 命令历史与本对话）
 - [x] 关闭 SSH 密码登录，仅留公钥 → `99-dsh-hardening.conf`，双向实测通过
-- [ ] 前 14 天 P0 收敛期：小号在群里只收不发、不拉群、≤50 条/天（起算 2026-10-25）
+- [ ] 前 14 天 P0 收敛期：小号在群里只收不发、不拉群、≤50 条/天（起算 2026-10-25）——**进行中，第 9 天，11-08 到期**
 
 ---
 
@@ -167,7 +167,7 @@ S1 体检 ✅ · S1.5 网络探测 ✅ · S3 Node 24(v24.22.1) ✅ · S2 用户�
 ```
 QQ ←→ NapCat(云 127.0.0.1:3001, systemd) ←→ bridge(云 127.0.0.1:8787, SQLite, systemd)
                                                     ←→ dsh-qq-agent(云, DSH qq profile, systemd)
-                                                          ↕ 仅在主人开机时（未实现）
+                                                          ↕ 仅在他开机时（pc-agent 长轮询，见 D17）
                                                      pc-agent(Windows, 主动长轮询)
 ```
 
@@ -187,7 +187,7 @@ QQ ←→ NapCat(云 127.0.0.1:3001, systemd) ←→ bridge(云 127.0.0.1:8787, 
 
 换机器 = 打包前四项 + 重下依赖。persona 目录就是「她」，带走它她还是她。
 
-### D17 工具通道不用反向 SSH（尚未实现）
+### D17 工具通道不用反向 SSH（已实现：pc-agent + `pc_exec` / `pc_read` / `pc_write`）
 
 **否决反向 SSH**（`ssh -R 2222:127.0.0.1:22` + 云端 `ssh -p 2222 localhost`）的三条理由：
 1. 要在 Windows 上开 sshd——为一个跑命令的需求开一个远程登录入口，代价过大
@@ -195,6 +195,8 @@ QQ ←→ NapCat(云 127.0.0.1:3001, systemd) ←→ bridge(云 127.0.0.1:8787, 
 3. 一条命令一个连接，做不好超时 / 幂等 / 并发
 
 **改用反向的 bridge 模式**：PC 端 pc-agent 主动长轮询云端，不开任何入站端口；心跳给出在线/离线/刚断三态；命令白名单 + 单条超时 + 输出上限 + 按 id 幂等；暴露 `pc_exec` / `pc_read` / `pc_write`。`bridge/src` 就是现成参考实现。
+
+**落地（2026-11-02）**：`pc-agent` 在他电脑上跑起来了（登录自启，166 个用例），云端插件在**主人私聊**里按轮注册 `pc_exec` / `pc_read` / `pc_write`，群聊和别人面前一个都不注册（`lib/pc-tools.js` + `agent/inbox/inserted`）。他的电脑关着时调用会等满超时（30 秒）而不是静默失败，日志里有 `pc command timed out`。
 
 ### 依赖与版本（云端）
 
@@ -276,11 +278,11 @@ systemctl daemon-reload
 
 ### 云端待办
 
-- [ ] pc-agent + `pc_exec`/`pc_read`/`pc_write`（D17）
-- [ ] `node-plugin/test/dsh-resolve.js` 里 dsh 路径写死 Windows，云端跑不了那 32 个测试（不影响线上）
+- [x] pc-agent + `pc_exec`/`pc_read`/`pc_write`（D17）——已上线：`pc-agent` 在他电脑上登录自启（166 用例），云端插件只在主人私聊里按轮注册这三个工具
+- [x] `node-plugin/test/dsh-resolve.js` 不再写死 Windows：按平台给候选路径，`DSH_INSTALL` 可覆盖，云端 300 个用例跑得动
 - [x] `MEMORY.md` 里「本机 node 插件」一句已过时（已改为三段全在云端）
-- [ ] whisper 语音转写（ffmpeg 有了，whisper 没有）
-- [ ] 本机 `persona/` 那份降级为冷备份，避免与云端真身漂移
+- [x] 语音转写两条路都在：云端 ASR（`ASR_URL` + `ASR_API_KEY` + `ASR_MODEL`）优先，本地 faster-whisper venv（`ASR_PYTHON` + `ASR_SCRIPT`）兜底，见 `bridge/src/asr.js`
+- [ ] 本机 `persona/` 那份降级为冷备份，避免与云端真身漂移——**已漂移**：本机 `persona/MEMORY.md` 还是 2026-10 的老样式（2.1 KB、14 条），云端真身 35 条 / 7.5 KB；`deploy/pull-persona.ps1` 拉到的是另一个目录，别把本机这份当真身改
 
 
 ## 运维基座（2026-10-25 11:10 上线）
