@@ -438,7 +438,8 @@ OWNER_QQ=<你自己的 QQ 号>
 ```
 
 其余 6 个键**保持原样**（`NAPCAT_WS_URL` / `BRIDGE_HOST` / `BRIDGE_PORT` / `BACKLOG_TTL_MS` /
-`DB_PATH` / `BLOB_DIR`），共 **9 个键**，与部署契约逐字一致。
+`DB_PATH` / `BLOB_DIR`），必需的就是这 **9 个**，与部署契约逐字一致。之后按需追加语音、主动开口、
+世界线那些键（见附录 A 的「可选键」表），所以**别把总行数当校验条件**——线上现在 47 行。
 
 ### 6.3 自查
 
@@ -446,7 +447,7 @@ OWNER_QQ=<你自己的 QQ 号>
 
 ```bash
 ls -l /etc/dsh-qq-bridge/env
-grep -c '^[A-Z_]*=' /etc/dsh-qq-bridge/env
+grep -cE '^[A-Z_][A-Z0-9_]*=' /etc/dsh-qq-bridge/env
 grep -n 'REPLACE_WITH' /etc/dsh-qq-bridge/env || echo "占位符已全部替换"
 grep -nE '^(BRIDGE_HOST|BRIDGE_PORT|DB_PATH|BLOB_DIR)=' /etc/dsh-qq-bridge/env
 ```
@@ -455,7 +456,7 @@ grep -nE '^(BRIDGE_HOST|BRIDGE_PORT|DB_PATH|BLOB_DIR)=' /etc/dsh-qq-bridge/env
 
 ```
 -rw------- 1 root root ... /etc/dsh-qq-bridge/env     ← 0600
-9                                                     ← 恰好 9 个键
+9 或更多                                              ← 必需的那 9 个一个不少（键名带数字的也要数到）
 占位符已全部替换
 BRIDGE_HOST=127.0.0.1
 BRIDGE_PORT=8787
@@ -465,7 +466,7 @@ BLOB_DIR=/var/lib/dsh-qq-bridge/blobs
 
 【失败】
 
-- 数字不是 9 → 你多写/少写/改了键名。对照 `env.example` 的注释头。
+- 比 9 少 → 你漏写或写错了键名，对照 `env.example` 的注释头；比 9 多是正常的（装语音、主动开口、世界线时会往上加）。
 - `BRIDGE_HOST` 不是 `127.0.0.1` → 改回来（否则 bridge 拒启动，或更糟：暴露公网）。
 - env 文件里**不要**写 `export`、不要给值加引号、不要行尾 `# 注释` —— systemd 的
   `EnvironmentFile=` 不解这些，会导致值里带上引号字符，报鉴权失败却查不出来。

@@ -123,7 +123,7 @@ qq-dsh/
   回复必须通过 `ctx.on('session/event', ...)` 自行聚合 assistant 文本——`followup` 返回 `void`，拿不到回复。
 - 非 owner 必须走**无工具** preset，用 `CreateAgentOptions.meta.agentPreset` 与创建期 `setup` 钩子实现；
   这是硬需求。若 DSH 现有机制不支持"无工具 preset"，必须停下来回报，不得自行降级或跳过。
-- 会话键、串行、并发上限 2、单轮超时 180s、闲置 6 小时回收，均按 PROTOCOL.md。
+- 会话键、串行、并发上限 2、单轮超时 180s（线上 240s）、闲置 6 小时回收，均按 PROTOCOL.md。
 - 图片经 `GET /blob/<id>` 拉取后转 image content block；单张 >4 MiB 丢弃并前置 `[图片过大已忽略]`。
 - 断线（bridge 不可达）必须退避重连，不得进程退出、不得抛未捕获异常。
 - 零运行时依赖优先；确实需要时在回报里说明理由。
@@ -131,7 +131,7 @@ qq-dsh/
 **验收标准**
 1. 用假 bridge HTTP 桩跑通：poll 拿到 Task → 建/续 session → 收到回复 → `POST /node/result` 正确。
 2. 同一 session 键的消息串行；不同键可并发且不超上限 2。
-3. 单轮超时 180s 后提交 `ok:false, error:"turn timeout"`。
+3. 单轮超时 180s（线上 240s）后提交 `ok:false, error:"turn timeout"`。
 4. 重复投递同一 taskId 只执行一轮，复用以有结果。
 5. **非 owner 的会话调用任何工具被拒绝**——给出直接证据（构造一次工具调用尝试并展示被拒）。
 6. bridge 不可达时插件存活，恢复后自动继续取任务（展示重连日志）。

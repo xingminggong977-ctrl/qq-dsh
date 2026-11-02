@@ -154,7 +154,10 @@ node 读到缺省必须按 `true` 处理——**缺字段等于要回复**，否
 - `isOwner` 决定 agent preset：`true` → 默认全权；`false` → 无工具的 `chat-only` 限制。
   **非 owner 的会话必须无法调用任何工具**——这是硬需求，不是尽力而为。
 - 同一会话键串行执行；跨会话全局并发上限默认 2。
-- 单轮超时默认 180s，超时提交 `ok:false` + `error:"turn timeout"`。
+- 单轮超时默认 180s，超时提交 `ok:false` + `error:"turn timeout"`；线上 profile 设成 240s。
+  超时前她已经说出口的话会被保住：先发那一段（`earlyReplyMs` / `earlyReplyMinMs`），再追一句「交代结果」，
+  最后才按超时上报；确实什么都没说，才由 bridge 补一句「你说句「继续」」。
+- 一个回合最多 20 次工具调用（`toolCallBudget`），到量同样先追收尾话，再以 `ok:true` 交付已说的部分。
 - 会话闲置 6 小时回收（`dispose()` 并移除映射）。
 - 图片：node 用 `GET /blob/<blobId>` 拉取后作为 image content block 传给 agent；单张上限 4 MiB，
   超限时该图被丢弃并在 `text` 前置一行 `[图片过大已忽略]`。
