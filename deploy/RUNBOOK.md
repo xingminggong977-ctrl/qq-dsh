@@ -1271,7 +1271,7 @@ sudo userdel dshqq 2>/dev/null || true
 | 键 | 默认 | 作用 |
 |---|---|---|
 | `INBOUND_SILENT_MS` | `180000` | NapCat 一条入站帧都没有多久就喊一声「我这边好像收不到消息了」。阈值必须远大于 NapCat 30 秒的心跳间隔 |
-| `QQ_FILE_ROOTS` | `/var/lib/dsh-qq-agent/workspace:/tmp` | `/node/send_file` 肯打开哪些目录，分隔符跟平台走（`:` / `;`） |
+| `QQ_FILE_ROOTS` | `/var/lib/dsh-qq-agent/workspace` | `/node/send_file` 肯打开哪些目录，分隔符跟平台走（`:` / `;`）。别指望 `/tmp`：单元开了 `PrivateTmp=yes`，服务看不到宿主 `/tmp` |
 | `PROACTIVE_ENABLED` / `PROACTIVE_MIN_GAP_MS` / `PROACTIVE_MAX_PER_DAY` / `PROACTIVE_MAX_ASKS_PER_DAY` | `false` / `10800000` / `30` / `8` | 主动开口的开关与两个额度；线上设成 `4` / `4` |
 | `PROACTIVE_SPREAD_OVER_DAY` | `on` | 把每日额度按钟点摊开（19:00 前最多 3 条），免得一上午烧光、晚上一句没有 |
 | `PROACTIVE_REQUIRE_ACTIVITY` | `on` | 上一次主动开口之后他一句话都没有，就别再开口 |
