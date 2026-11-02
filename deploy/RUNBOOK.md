@@ -1251,7 +1251,7 @@ sudo userdel dshqq 2>/dev/null || true
 
 ## 附录 A · env 键与部署契约逐条对照
 
-`PLAN.md`「部署契约」列出 9 个键，`env.example` 与 `dsh-qq-bridge.service`（`EnvironmentFile=`）与之一致：
+`PLAN.md`「部署契约」列出 9 个**必需**键，`env.example` 与 `dsh-qq-bridge.service`（`EnvironmentFile=`）与之一致：
 
 | # | 键 | `env.example` 中的值 | 谁读它 | 改错的后果 |
 |---|---|---|---|---|
@@ -1265,13 +1265,27 @@ sudo userdel dshqq 2>/dev/null || true
 | 8 | `DB_PATH` | `/var/lib/dsh-qq-bridge/queue.db` | bridge | 指到不可写目录 → 启动即 EACCES |
 | 9 | `BLOB_DIR` | `/var/lib/dsh-qq-bridge/blobs` | bridge | 同上；图片下载会失败 |
 
-自查：`grep -c '^[A-Z_]*=' /etc/dsh-qq-bridge/env` 必须等于 **9**。
+### 可选键（不写就走默认，2026-11 之后的线上实际还多了这些）
+
+| 键 | 默认 | 作用 |
+|---|---|---|
+| `INBOUND_SILENT_MS` | `180000` | NapCat 一条入站帧都没有多久就喊一声「我这边好像收不到消息了」。阈值必须远大于 NapCat 30 秒的心跳间隔 |
+| `QQ_FILE_ROOTS` | `/var/lib/dsh-qq-agent/workspace:/tmp` | `/node/send_file` 肯打开哪些目录，分隔符跟平台走（`:` / `;`） |
+| `PROACTIVE_ENABLED` / `PROACTIVE_MIN_GAP_MS` / `PROACTIVE_MAX_PER_DAY` / `PROACTIVE_MAX_ASKS_PER_DAY` | `false` / `10800000` / `30` / `8` | 主动开口的开关与两个额度；线上设成 `4` / `4` |
+| `PROACTIVE_SPREAD_OVER_DAY` | `on` | 把每日额度按钟点摊开（19:00 前最多 3 条），免得一上午烧光、晚上一句没有 |
+| `PROACTIVE_REQUIRE_ACTIVITY` | `on` | 上一次主动开口之后他一句话都没有，就别再开口 |
+| `WORLD_LIFE_*` | 关闭 | 世界线（`life-feed.jsonl`）驱动的主动开口，另有独立日上限 |
+| `ASR_*` / `TTS_*` | 本地 faster-whisper / 无语音 | 语音转写与合成；云端优先走 dashscope，本地脚本兜底 |
+
+自查（**只数必需键，不要数总行数**——线上现在一共 47 行，含 ASR/TTS/主动开口/世界线）：
+`for k in NAPCAT_WS_URL NAPCAT_ACCESS_TOKEN BRIDGE_HOST BRIDGE_PORT NODE_TOKEN OWNER_QQ BACKLOG_TTL_MS DB_PATH BLOB_DIR; do grep -q "^$k=" /etc/dsh-qq-bridge/env || echo "缺 $k"; done`
 
 ## 附录 B · 本机 node-plugin 对接须知（属 T2）
 
 - 本机插件直接访问 `http://127.0.0.1:8787`（就是隧道的本机端），**不需要知道服务器 IP**。
 - 鉴权头：`Authorization: Bearer <NODE_TOKEN>`，与云端 env 里那一个值逐字符一致。
-- 会话键：`qq:${kind}:${groupId ?? '-'}:${userId}`；同键串行；全局并发上限 2；单轮超时 180s；闲置 6 小时回收。
+- 会话键：`qq:${kind}:${groupId ?? '-'}:${userId}`；同键串行；全局并发上限 2（`maxConcurrentTurns`）；单轮超时默认 180 s、线上 profile 设 240 s（`turnTimeoutMs`）；闲置 6 小时回收会话（`idleRecycleMs`）。
+- 另外两个轮转：攒满 60 轮换一个新会话、他隔 10 分钟以上再开口也换（`sessionMaxTurns` / `sessionRotateAfterIdleMs`）。会话越老不会越慢，这两条是为了别让上下文无限长。
 - 非 owner 必须走**无工具** preset（硬需求，不是"尽力"）。
 - 插件装好后，`verify.ps1` 第 3 步取到的任务会被真正消费，`tasks 条数` 通常保持 0 —— 这是正常的。
   想单独验云端链路时，先把 node-plugin 停掉再跑 `verify.ps1`。
