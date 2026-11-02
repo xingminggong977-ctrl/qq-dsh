@@ -44,7 +44,7 @@ log into with NapCat, and a DSH install. Roughly 20 minutes, most of it waiting 
 
 # 2. the bridge
 git clone https://github.com/xingminggong977-ctrl/qq-dsh-bridge /opt/qq-dsh-bridge
-cd /opt/qq-dsh-bridge && npm ci && npm test          # 256 tests, no network needed
+cd /opt/qq-dsh-bridge && npm ci && npm test          # 258 tests, no network needed
 
 # 3. the plugin, next to its persona directory
 git clone https://github.com/xingminggong977-ctrl/qq-dsh-node-plugin /opt/qq-dsh
